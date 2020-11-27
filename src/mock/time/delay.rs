@@ -35,13 +35,8 @@ impl Future for Delay {
 
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
         if self.is_elapsed() {
-            println!("Timer elasped");
             Poll::Ready(())
         } else {
-            println!(
-                "Timer pending (still {:?} to go)",
-                self.deadline - clock::now()
-            );
             Poll::Pending
         }
     }
