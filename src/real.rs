@@ -57,6 +57,8 @@ pub mod sync {
     pub mod broadcast {
         pub use tokio::sync::broadcast::*;
     }
+
+    pub use tokio::sync::Notify;
 }
 
 // These are not mocked
