@@ -13,11 +13,11 @@ pub use tokio::spawn;
 
 #[cfg(test)]
 mod tests {
+    use crate::mock::test::*;
     use std::future::Future;
     use std::time::Duration;
 
     use super::*;
-    use tokio_test::*;
 
     #[test]
     fn select_message_before_timeout() {
@@ -26,7 +26,7 @@ mod tests {
         let mut select_task = select_task(rx);
 
         assert_pending!(select_task.poll());
-        assert_ready_ok!(task::spawn(async { tx.send(42).await }).poll());
+        assert_ready_ok!(crate::mock::test::spawn(async { tx.send(42).await }).poll());
         assert_ready_eq!(select_task.poll(), Some(42));
     }
 
@@ -41,10 +41,8 @@ mod tests {
         assert_ready_eq!(select_task.poll(), None);
     }
 
-    fn select_task(
-        mut rx: sync::mpsc::Receiver<u32>,
-    ) -> task::Spawn<impl Future<Output = Option<u32>>> {
-        task::spawn(async move {
+    fn select_task(mut rx: sync::mpsc::Receiver<u32>) -> Spawn<impl Future<Output = Option<u32>>> {
+        crate::mock::test::spawn(async move {
             tokio::select! {
                 _ = time::delay_for(Duration::from_secs(1)) => {
                     None

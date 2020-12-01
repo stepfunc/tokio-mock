@@ -257,23 +257,22 @@ pub fn unbounded_channel<T>() -> (UnboundedSender<T>, UnboundedReceiver<T>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio_test::*;
 
     mod bounded {
         use super::*;
+        use crate::mock::test::*;
 
         #[test]
         fn dropping_tx() {
             let (mut tx, mut rx) = channel(16);
-
-            assert_pending!(task::spawn(async { rx.recv().await }).poll());
-            assert_ready!(task::spawn(async move {
+            assert_pending!(spawn(async { rx.recv().await }).poll());
+            assert_ready!(spawn(async move {
                 tx.send(()).await.unwrap();
                 drop(tx);
             })
             .poll());
-            assert_ready_eq!(task::spawn(async { rx.recv().await }).poll(), Some(()));
-            assert_ready_eq!(task::spawn(async { rx.recv().await }).poll(), None);
+            assert_ready_eq!(spawn(async { rx.recv().await }).poll(), Some(()));
+            assert_ready_eq!(spawn(async { rx.recv().await }).poll(), None);
         }
 
         #[test]
@@ -281,7 +280,7 @@ mod tests {
             let (mut tx, mut rx) = channel(16);
 
             assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
-            assert_ready!(task::spawn(async move {
+            assert_ready!(spawn(async move {
                 tx.send(()).await.unwrap();
                 drop(tx);
             })
@@ -295,13 +294,13 @@ mod tests {
             let (mut tx1, rx) = channel(16);
             let mut tx2 = tx1.clone();
 
-            assert_ready_ok!(task::spawn(async { tx1.send(()).await }).poll());
-            assert_ready_ok!(task::spawn(async { tx2.send(()).await }).poll());
+            assert_ready_ok!(spawn(async { tx1.send(()).await }).poll());
+            assert_ready_ok!(spawn(async { tx2.send(()).await }).poll());
 
             drop(rx);
 
-            assert_ready_err!(task::spawn(async { tx1.send(()).await }).poll());
-            assert_ready_err!(task::spawn(async { tx2.send(()).await }).poll());
+            assert_ready_err!(spawn(async { tx1.send(()).await }).poll());
+            assert_ready_err!(spawn(async { tx2.send(()).await }).poll());
         }
 
         #[test]
@@ -322,18 +321,18 @@ mod tests {
         fn queue_full() {
             let (mut tx, mut rx) = channel(16);
 
-            assert_ready!(task::spawn(async {
+            assert_ready!(spawn(async {
                 for _ in 0..16usize {
                     tx.send(()).await.unwrap();
                 }
             })
             .poll());
-            assert_pending!(task::spawn(async {
+            assert_pending!(spawn(async {
                 tx.send(()).await.unwrap();
             })
             .poll());
-            assert_ready!(task::spawn(async { rx.recv().await }).poll());
-            assert_ready!(task::spawn(async {
+            assert_ready!(spawn(async { rx.recv().await }).poll());
+            assert_ready!(spawn(async {
                 tx.send(()).await.unwrap();
             })
             .poll());
@@ -354,16 +353,17 @@ mod tests {
 
     mod unbounded {
         use super::*;
+        use crate::mock::test::*;
 
         #[test]
         fn dropping_tx() {
             let (mut tx, mut rx) = unbounded_channel();
 
-            assert_pending!(task::spawn(async { rx.recv().await }).poll());
+            assert_pending!(spawn(async { rx.recv().await }).poll());
             tx.send(()).unwrap();
             drop(tx);
-            assert_ready_eq!(task::spawn(async { rx.recv().await }).poll(), Some(()));
-            assert_ready_eq!(task::spawn(async { rx.recv().await }).poll(), None);
+            assert_ready_eq!(spawn(async { rx.recv().await }).poll(), Some(()));
+            assert_ready_eq!(spawn(async { rx.recv().await }).poll(), None);
         }
 
         #[test]

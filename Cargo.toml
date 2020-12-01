@@ -6,4 +6,3 @@ edition = "2018"
 
 [dependencies]
 tokio = { version = "^0.2.23", features = ["tcp", "sync", "io-util", "io-std", "time", "rt-core", "rt-threaded", "macros"] }
-tokio-test = "0.3"
