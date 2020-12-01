@@ -38,12 +38,10 @@ impl<T> ChannelData<T> {
     fn try_recv(&mut self) -> Result<T, TryRecvError> {
         if let Some(msg) = self.msg.take() {
             Ok(msg)
+        } else if self.is_send_dropped {
+            Err(TryRecvError::Closed)
         } else {
-            if self.is_send_dropped {
-                Err(TryRecvError::Closed)
-            } else {
-                Err(TryRecvError::Empty)
-            }
+            Err(TryRecvError::Empty)
         }
     }
 }

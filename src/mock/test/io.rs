@@ -1,6 +1,5 @@
 use super::super::io::{AsyncRead, AsyncWrite, Error, ErrorKind};
 use std::collections::VecDeque;
-use std::iter::FromIterator;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
@@ -20,7 +19,7 @@ impl ChannelState {
         match self {
             Self::Open(buffer) => buffer.extend(data.iter()),
             _ => {
-                let buffer = VecDeque::from_iter(data.iter().copied());
+                let buffer = data.iter().copied().collect();
                 *self = Self::Open(buffer);
             }
         }
@@ -104,9 +103,10 @@ impl Handle {
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        let mut shared = self.0.lock().unwrap();
-        shared.read_channel.close();
-        shared.write_channel.close();
+        if let Ok(mut shared) = self.0.lock() {
+            shared.read_channel.close();
+            shared.write_channel.close();
+        }
     }
 }
 

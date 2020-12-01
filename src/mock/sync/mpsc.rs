@@ -30,12 +30,10 @@ impl<T> ChannelData<T> {
     fn try_recv(&mut self) -> Result<T, TryRecvError> {
         if let Some(msg) = self.queue.pop_front() {
             Ok(msg)
+        } else if self.num_senders == 0 {
+            Err(TryRecvError::Closed)
         } else {
-            if self.num_senders == 0 {
-                Err(TryRecvError::Closed)
-            } else {
-                Err(TryRecvError::Empty)
-            }
+            Err(TryRecvError::Empty)
         }
     }
 
@@ -244,7 +242,7 @@ impl<T> fmt::Debug for UnboundedSender<T> {
 pub fn channel<T>(buffer: usize) -> (Sender<T>, Receiver<T>) {
     let data = Arc::new(Mutex::new(ChannelData::new(Some(buffer))));
 
-    (Sender::new(data.clone()), Receiver::new(data.clone()))
+    (Sender::new(data.clone()), Receiver::new(data))
 }
 
 pub fn unbounded_channel<T>() -> (UnboundedSender<T>, UnboundedReceiver<T>) {
@@ -252,7 +250,7 @@ pub fn unbounded_channel<T>() -> (UnboundedSender<T>, UnboundedReceiver<T>) {
 
     (
         UnboundedSender::new(data.clone()),
-        UnboundedReceiver::new(data.clone()),
+        UnboundedReceiver::new(data),
     )
 }
 
