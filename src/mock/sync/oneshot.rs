@@ -161,13 +161,14 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio_test::*;
+
+    use crate::mock::test::*;
 
     #[test]
     fn send_recv() {
         let (tx, rx) = channel();
 
-        let mut rx_task = task::spawn(async move { rx.await });
+        let mut rx_task = spawn(async move { rx.await });
 
         assert_pending!(rx_task.poll());
         assert!(tx.send(42).is_ok());
@@ -178,7 +179,7 @@ mod tests {
     fn dropping_tx() {
         let (tx, rx) = channel::<()>();
 
-        let mut rx_task = task::spawn(async { rx.await });
+        let mut rx_task = spawn(async { rx.await });
 
         assert_pending!(rx_task.poll());
         drop(tx);
@@ -208,7 +209,7 @@ mod tests {
     fn send_closed() {
         let (mut tx, rx) = channel::<()>();
 
-        let mut closed_task = task::spawn(async move { tx.closed().await });
+        let mut closed_task = spawn(async move { tx.closed().await });
 
         assert_pending!(closed_task.poll());
         drop(rx);
