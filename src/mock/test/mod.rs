@@ -1,15 +1,16 @@
 pub mod io;
-
-pub use poll_macros::assert_err;
-pub use poll_macros::assert_ok;
-pub use poll_macros::assert_pending;
-pub use poll_macros::assert_ready;
-pub use poll_macros::assert_ready_eq;
-pub use poll_macros::assert_ready_err;
-pub use poll_macros::assert_ready_ok;
+mod macros;
 
 use std::ptr::null;
 use std::task::{Context, RawWaker, Waker};
+
+pub use crate::assert_ready;
+pub use crate::assert_ready_ok;
+pub use crate::assert_ready_err;
+pub use crate::assert_pending;
+pub use crate::assert_ready_eq;
+pub use crate::assert_ok;
+pub use crate::assert_err;
 
 pub struct Spawn<T>
 where
