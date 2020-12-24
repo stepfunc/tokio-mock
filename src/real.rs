@@ -8,6 +8,10 @@ pub mod io {
     pub use io::{Error, ErrorKind, Result};
 }
 
+pub mod task {
+    pub use tokio::task::*;
+}
+
 pub mod time {
     use tokio::time;
 

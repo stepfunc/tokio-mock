@@ -11,6 +11,11 @@ pub use tokio::select;
 // to poll manually.
 pub use tokio::spawn;
 
+// we don't mock the types in Task
+pub mod task {
+    pub use tokio::task::*;
+}
+
 #[cfg(test)]
 mod tests {
     use crate::mock::test::*;
