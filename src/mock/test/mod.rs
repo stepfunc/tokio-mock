@@ -4,13 +4,13 @@ mod macros;
 use std::ptr::null;
 use std::task::{Context, RawWaker, Waker};
 
-pub use crate::assert_ready;
-pub use crate::assert_ready_ok;
-pub use crate::assert_ready_err;
-pub use crate::assert_pending;
-pub use crate::assert_ready_eq;
-pub use crate::assert_ok;
 pub use crate::assert_err;
+pub use crate::assert_ok;
+pub use crate::assert_pending;
+pub use crate::assert_ready;
+pub use crate::assert_ready_eq;
+pub use crate::assert_ready_err;
+pub use crate::assert_ready_ok;
 
 pub struct Spawn<T>
 where

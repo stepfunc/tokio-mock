@@ -8,6 +8,11 @@ pub mod io {
     pub use io::{Error, ErrorKind, Result};
 }
 
+// we don't mock the types in the net module
+pub mod net {
+    pub use tokio::net::*;
+}
+
 pub mod task {
     pub use tokio::task::*;
 }
@@ -67,7 +72,3 @@ pub mod sync {
 
 // These are not mocked
 pub use tokio::spawn;
-
-pub mod net {
-    pub use tokio::net::TcpStream;
-}
