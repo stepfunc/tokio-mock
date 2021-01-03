@@ -1,5 +1,4 @@
 pub mod io;
-pub mod net;
 pub mod sync;
 pub mod test;
 pub mod time;
@@ -11,9 +10,14 @@ pub use tokio::select;
 // to poll manually.
 pub use tokio::spawn;
 
-// we don't mock the types in Task
+// we don't mock the types in the task module
 pub mod task {
     pub use tokio::task::*;
+}
+
+// we don't mock the types in the net module
+pub mod net {
+    pub use tokio::net::*;
 }
 
 #[cfg(test)]
