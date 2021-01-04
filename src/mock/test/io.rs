@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
+use tokio::io::ReadBuf;
 
 enum ChannelState {
     Open(VecDeque<u8>),
@@ -116,8 +117,8 @@ impl AsyncRead for MockIO {
     fn poll_read(
         self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<std::io::Result<usize>> {
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
         let mut shared = self.0.lock().unwrap();
 
         match &mut shared.read_channel {
@@ -125,18 +126,20 @@ impl AsyncRead for MockIO {
                 0 => Poll::Pending,
                 _ => {
                     let mut num_bytes = 0;
-                    for dest in buf.iter_mut() {
+                    for dest in buf.initialize_unfilled().iter_mut() {
                         if let Some(byte) = data.pop_front() {
                             *dest = byte;
                             num_bytes += 1;
                         } else {
-                            return Poll::Ready(Ok(num_bytes));
+                            buf.advance(num_bytes);
+                            return Poll::Ready(Ok(()));
                         }
                     }
-                    Poll::Ready(Ok(num_bytes))
+                    buf.advance(num_bytes);
+                    Poll::Ready(Ok(()))
                 }
             },
-            ChannelState::Closed => Poll::Ready(Ok(0)),
+            ChannelState::Closed => Poll::Ready(Ok(())),
             ChannelState::Error(err) => Poll::Ready(Err(Error::new(*err, "test error"))),
         }
     }

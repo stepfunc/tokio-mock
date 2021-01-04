@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
-use tokio::sync::mpsc::error::{SendError, TryRecvError, TrySendError};
+use tokio::sync::mpsc::error::{SendError, TrySendError};
 
 pub use tokio::sync::mpsc::error;
 
@@ -27,13 +27,13 @@ impl<T> ChannelData<T> {
         }
     }
 
-    fn try_recv(&mut self) -> Result<T, TryRecvError> {
+    fn poll_recv(&mut self) -> Poll<Option<T>> {
         if let Some(msg) = self.queue.pop_front() {
-            Ok(msg)
+            Poll::Ready(Some(msg))
         } else if self.num_senders == 0 {
-            Err(TryRecvError::Closed)
+            Poll::Ready(None)
         } else {
-            Err(TryRecvError::Empty)
+            Poll::Pending
         }
     }
 
@@ -62,11 +62,7 @@ impl<T> Future for ReceiveFuture<T> {
     type Output = Option<T>;
 
     fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match self.data.lock().unwrap().try_recv() {
-            Ok(msg) => Poll::Ready(Some(msg)),
-            Err(TryRecvError::Closed) => Poll::Ready(None),
-            Err(TryRecvError::Empty) => Poll::Pending,
-        }
+        self.data.lock().unwrap().poll_recv()
     }
 }
 
@@ -110,8 +106,8 @@ impl<T> Receiver<T> {
         }
     }
 
-    pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
-        self.data.lock().unwrap().try_recv()
+    pub fn poll_recv(&mut self) -> Poll<Option<T>> {
+        self.data.lock().unwrap().poll_recv()
     }
 
     pub fn close(&mut self) {
@@ -279,14 +275,14 @@ mod tests {
         fn dropping_tx_try_recv() {
             let (mut tx, mut rx) = channel(16);
 
-            assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
+            assert_eq!(rx.poll_recv(), Poll::Pending);
             assert_ready!(spawn(async move {
                 tx.send(()).await.unwrap();
                 drop(tx);
             })
             .poll());
-            assert_eq!(rx.try_recv(), Ok(()));
-            assert_eq!(rx.try_recv(), Err(TryRecvError::Closed));
+            assert_eq!(rx.poll_recv(), Poll::Ready(Some(())));
+            assert_eq!(rx.poll_recv(), Poll::Ready(None));
         }
 
         #[test]
@@ -346,7 +342,7 @@ mod tests {
                 assert!(tx.try_send(()).is_ok());
             }
             assert!(matches!(tx.try_send(()), Err(TrySendError::Full(()))));
-            assert!(rx.try_recv().is_ok());
+            assert_eq!(rx.poll_recv(), Poll::Ready(Some(())));
             assert!(tx.try_send(()).is_ok());
         }
     }
@@ -370,11 +366,11 @@ mod tests {
         fn dropping_tx_try_recv() {
             let (mut tx, mut rx) = unbounded_channel();
 
-            assert_eq!(rx.try_recv(), Err(TryRecvError::Empty));
+            assert_eq!(rx.poll_recv(), Poll::Pending);
             tx.send(()).unwrap();
             drop(tx);
-            assert_eq!(rx.try_recv(), Ok(()));
-            assert_eq!(rx.try_recv(), Err(TryRecvError::Closed));
+            assert_eq!(rx.poll_recv(), Poll::Ready(Some(())));
+            assert_eq!(rx.poll_recv(), Poll::Ready(None));
         }
 
         #[test]
