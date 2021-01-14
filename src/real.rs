@@ -48,6 +48,10 @@ pub mod sync {
         }
     }
 
+    pub mod watch {
+        pub use tokio::sync::watch::*;
+    }
+
     pub mod oneshot {
         use tokio::sync::oneshot;
 
