@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use tokio::io::ReadBuf;
 
+#[derive(Debug)]
 enum ChannelState {
     Open(VecDeque<Box<[u8]>>),
     Closed,
@@ -45,6 +46,7 @@ impl ChannelState {
     }
 }
 
+#[derive(Debug)]
 struct Shared {
     write_pending: bool,
     write_channel: ChannelState,
@@ -114,6 +116,7 @@ impl Drop for Handle {
     }
 }
 
+#[derive(Debug)]
 pub struct MockIO(Arc<Mutex<Shared>>);
 
 impl AsyncRead for MockIO {
