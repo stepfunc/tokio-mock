@@ -5,4 +5,4 @@ authors = ["Émile Grégoire <emile@stepfunc.io>"]
 edition = "2018"
 
 [dependencies]
-tokio = { version = "^0.2.23", features = ["tcp", "dns", "sync", "io-util", "io-std", "time", "rt-core", "rt-threaded", "macros"] }
+tokio = { version = "1", features = ["net", "sync", "io-util", "io-std", "time", "rt", "rt-multi-thread", "macros"] }

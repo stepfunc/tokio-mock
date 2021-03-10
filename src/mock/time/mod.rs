@@ -1,17 +1,17 @@
 mod clock;
-mod delay;
 mod instant;
+mod sleep;
 
 pub use std::time::Duration;
 
-pub use delay::Delay;
 pub use instant::Instant;
+pub use sleep::Delay;
 
-pub fn delay_until(deadline: Instant) -> Delay {
+pub fn sleep_until(deadline: Instant) -> Delay {
     Delay::new_deadline(deadline)
 }
 
-pub fn delay_for(delay: Duration) -> Delay {
+pub fn sleep(delay: Duration) -> Delay {
     Delay::new_delay(delay)
 }
 

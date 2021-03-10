@@ -3,9 +3,11 @@ use std::collections::VecDeque;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
+use tokio::io::ReadBuf;
 
+#[derive(Debug)]
 enum ChannelState {
-    Open(VecDeque<u8>),
+    Open(VecDeque<Box<[u8]>>),
     Closed,
     Error(ErrorKind),
 }
@@ -17,9 +19,12 @@ impl ChannelState {
 
     fn push(&mut self, data: &[u8]) {
         match self {
-            Self::Open(buffer) => buffer.extend(data.iter()),
+            Self::Open(buffer) => {
+                buffer.push_back(Vec::from(data).into_boxed_slice());
+            }
             _ => {
-                let buffer = data.iter().copied().collect();
+                let mut buffer = VecDeque::new();
+                buffer.push_back(Vec::from(data).into_boxed_slice());
                 *self = Self::Open(buffer);
             }
         }
@@ -41,6 +46,7 @@ impl ChannelState {
     }
 }
 
+#[derive(Debug)]
 struct Shared {
     write_pending: bool,
     write_channel: ChannelState,
@@ -110,33 +116,31 @@ impl Drop for Handle {
     }
 }
 
+#[derive(Debug)]
 pub struct MockIO(Arc<Mutex<Shared>>);
 
 impl AsyncRead for MockIO {
     fn poll_read(
         self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
-        buf: &mut [u8],
-    ) -> Poll<std::io::Result<usize>> {
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
         let mut shared = self.0.lock().unwrap();
 
         match &mut shared.read_channel {
-            ChannelState::Open(data) => match data.len() {
-                0 => Poll::Pending,
-                _ => {
-                    let mut num_bytes = 0;
-                    for dest in buf.iter_mut() {
-                        if let Some(byte) = data.pop_front() {
-                            *dest = byte;
-                            num_bytes += 1;
-                        } else {
-                            return Poll::Ready(Ok(num_bytes));
+            ChannelState::Open(data) => {
+                match data.pop_front() {
+                    None => Poll::Pending,
+                    Some(bytes) => {
+                        if bytes.len() > buf.remaining() {
+                            panic!("insufficient write space (available == {}) for queued read (len = {})", buf.remaining(), bytes.len());
                         }
+                        buf.put_slice(&bytes);
+                        Poll::Ready(Ok(()))
                     }
-                    Poll::Ready(Ok(num_bytes))
                 }
-            },
-            ChannelState::Closed => Poll::Ready(Ok(0)),
+            }
+            ChannelState::Closed => Poll::Ready(Ok(())),
             ChannelState::Error(err) => Poll::Ready(Err(Error::new(*err, "test error"))),
         }
     }
@@ -151,33 +155,22 @@ impl AsyncWrite for MockIO {
         let mut shared = self.0.lock().unwrap();
 
         match &mut shared.write_channel {
-            ChannelState::Open(data) => match data.len() {
-                0 => {
+            ChannelState::Open(data) => match data.pop_front() {
+                None => {
                     shared.write_pending = true;
                     Poll::Pending
                 }
-                _ => {
-                    let copy = data.clone();
-
-                    let mut num_bytes = 0;
-                    for dest in buf.iter() {
-                        if let Some(byte) = data.pop_front() {
-                            if *dest != byte {
-                                panic!(
-                                    r#"unexpected write: 
+                Some(expected) => {
+                    if buf != expected.as_ref() {
+                        panic!(
+                            r#"unexpected write:
  expected: {:02X?},
  received: {:02X?}"#,
-                                    copy, buf
-                                );
-                            }
-                            num_bytes += 1;
-                        } else {
-                            shared.write_pending = true;
-                            return Poll::Ready(Ok(num_bytes));
-                        }
+                            expected, buf
+                        );
                     }
                     shared.write_pending = false;
-                    Poll::Ready(Ok(num_bytes))
+                    Poll::Ready(Ok(expected.len()))
                 }
             },
             ChannelState::Closed => Poll::Ready(Ok(0)),

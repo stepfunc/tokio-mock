@@ -22,8 +22,8 @@ pub mod time {
 
     pub use std::time::Duration; // Re-export in tokio
 
-    pub use time::delay_for;
-    pub use time::delay_until;
+    pub use time::sleep;
+    pub use time::sleep_until;
     pub use time::Instant;
 }
 
@@ -42,8 +42,8 @@ pub mod sync {
         pub mod error {
             use tokio::sync::mpsc::error;
 
+            pub use error::RecvError;
             pub use error::SendError;
-            pub use error::TryRecvError;
             pub use error::TrySendError;
         }
     }

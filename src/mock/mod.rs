@@ -53,7 +53,7 @@ mod tests {
     fn select_task(mut rx: sync::mpsc::Receiver<u32>) -> Spawn<impl Future<Output = Option<u32>>> {
         crate::mock::test::spawn(async move {
             tokio::select! {
-                _ = time::delay_for(Duration::from_secs(1)) => {
+                _ = time::sleep(Duration::from_secs(1)) => {
                     None
                 }
                 value = rx.recv() => {
