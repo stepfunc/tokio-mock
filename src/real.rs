@@ -42,8 +42,8 @@ pub mod sync {
         pub mod error {
             use tokio::sync::mpsc::error;
 
-            pub use error::RecvError;
             pub use error::SendError;
+            pub use error::TryRecvError;
             pub use error::TrySendError;
         }
     }

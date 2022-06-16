@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
-use tokio::sync::mpsc::error::{SendError, TrySendError};
+use tokio::sync::mpsc::error::{SendError, TryRecvError, TrySendError};
 
 pub use tokio::sync::mpsc::error;
 
@@ -108,6 +108,14 @@ impl<T> Receiver<T> {
 
     pub fn poll_recv(&mut self) -> Poll<Option<T>> {
         self.data.lock().unwrap().poll_recv()
+    }
+
+    pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
+        let mut data = self.data.lock().unwrap();
+        if let Some(x) = data.queue.pop_front() {
+            return Ok(x);
+        }
+        Err(TryRecvError::Empty)
     }
 
     pub fn close(&mut self) {
