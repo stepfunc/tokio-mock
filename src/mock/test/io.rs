@@ -15,11 +15,11 @@ enum Action {
 }
 
 #[derive(Debug)]
-struct Inner {
+struct Script {
     actions: VecDeque<Action>,
 }
 
-impl Inner {
+impl Script {
     fn new() -> Self {
         Self {
             actions: VecDeque::new(),
@@ -28,7 +28,7 @@ impl Inner {
 }
 
 pub struct Handle {
-    inner: Arc<Mutex<Inner>>,
+    inner: Arc<Mutex<Script>>,
 }
 
 impl Handle {
@@ -67,7 +67,7 @@ impl Handle {
 
 #[derive(Debug)]
 pub struct MockIo {
-    inner: Arc<Mutex<Inner>>,
+    inner: Arc<Mutex<Script>>,
 }
 
 impl Drop for MockIo {
@@ -151,7 +151,7 @@ impl AsyncWrite for MockIo {
 }
 
 pub fn mock() -> (MockIo, Handle) {
-    let inner = Arc::new(Mutex::new(Inner::new()));
+    let inner = Arc::new(Mutex::new(Script::new()));
 
     (
         MockIo {
