@@ -1,4 +1,5 @@
 use super::super::io::{AsyncRead, AsyncWrite, Error, ErrorKind};
+
 use std::collections::VecDeque;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -6,176 +7,146 @@ use std::task::{Context, Poll};
 use tokio::io::ReadBuf;
 
 #[derive(Debug)]
-enum ChannelState {
-    Open(VecDeque<Box<[u8]>>),
-    Closed,
-    Error(ErrorKind),
-}
-
-impl ChannelState {
-    fn new() -> Self {
-        Self::Open(VecDeque::new())
-    }
-
-    fn push(&mut self, data: &[u8]) {
-        match self {
-            Self::Open(buffer) => {
-                buffer.push_back(Vec::from(data).into_boxed_slice());
-            }
-            _ => {
-                let mut buffer = VecDeque::new();
-                buffer.push_back(Vec::from(data).into_boxed_slice());
-                *self = Self::Open(buffer);
-            }
-        }
-    }
-
-    fn close(&mut self) {
-        *self = Self::Closed;
-    }
-
-    fn error(&mut self, err: ErrorKind) {
-        *self = Self::Error(err);
-    }
-
-    fn is_empty(&self) -> bool {
-        match self {
-            Self::Open(buffer) => buffer.is_empty(),
-            _ => true,
-        }
-    }
+enum Action {
+    Read(Vec<u8>),
+    Write(Vec<u8>),
+    ReadError(ErrorKind),
+    WriteError(ErrorKind),
 }
 
 #[derive(Debug)]
-struct Shared {
-    write_pending: bool,
-    write_channel: ChannelState,
-    read_channel: ChannelState,
+struct Script {
+    actions: VecDeque<Action>,
 }
 
-impl Shared {
+impl Script {
     fn new() -> Self {
         Self {
-            write_pending: false,
-            write_channel: ChannelState::new(),
-            read_channel: ChannelState::new(),
+            actions: VecDeque::new(),
         }
     }
 }
 
-pub struct Handle(Arc<Mutex<Shared>>);
+pub struct ScriptHandle {
+    inner: Arc<Mutex<Script>>,
+}
 
-impl Handle {
+impl ScriptHandle {
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.lock().unwrap().actions.len()
+    }
+
     pub fn read(&mut self, data: &[u8]) {
-        self.0.lock().unwrap().read_channel.push(data);
-    }
-
-    pub fn all_read(&self) -> bool {
-        self.0.lock().unwrap().read_channel.is_empty()
-    }
-
-    pub fn close_read(&mut self) {
-        self.0.lock().unwrap().read_channel.close();
+        self.inner
+            .lock()
+            .unwrap()
+            .actions
+            .push_back(Action::Read(Vec::from(data)));
     }
 
     pub fn read_error(&mut self, err: ErrorKind) {
-        self.0.lock().unwrap().read_channel.error(err);
-    }
-
-    pub fn all_written(&self) -> bool {
-        self.0.lock().unwrap().write_channel.is_empty()
-    }
-
-    pub fn pending_write(&self) -> bool {
-        self.0.lock().unwrap().write_pending
+        self.inner
+            .lock()
+            .unwrap()
+            .actions
+            .push_back(Action::ReadError(err));
     }
 
     pub fn write(&mut self, data: &[u8]) {
-        self.0.lock().unwrap().write_channel.push(data);
-    }
-
-    pub fn close_write(&mut self) {
-        self.0.lock().unwrap().write_channel.close();
+        self.inner
+            .lock()
+            .unwrap()
+            .actions
+            .push_back(Action::Write(Vec::from(data)));
     }
 
     pub fn write_error(&mut self, err: ErrorKind) {
-        self.0.lock().unwrap().write_channel.error(err);
-    }
-
-    pub fn all_done(&self) -> bool {
-        self.all_read() && self.all_written()
-    }
-}
-
-impl Drop for Handle {
-    fn drop(&mut self) {
-        if let Ok(mut shared) = self.0.lock() {
-            shared.read_channel.close();
-            shared.write_channel.close();
-        }
+        self.inner
+            .lock()
+            .unwrap()
+            .actions
+            .push_back(Action::WriteError(err));
     }
 }
 
 #[derive(Debug)]
-pub struct MockIO(Arc<Mutex<Shared>>);
+pub struct MockIo {
+    inner: Arc<Mutex<Script>>,
+}
 
-impl AsyncRead for MockIO {
+impl Drop for MockIo {
+    fn drop(&mut self) {
+        let count = self.inner.lock().unwrap().actions.len();
+        if count > 0 && !std::thread::panicking() {
+            panic!("I/O script contained {} actions on drop", count)
+        }
+    }
+}
+
+impl AsyncRead for MockIo {
     fn poll_read(
         self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        let mut shared = self.0.lock().unwrap();
-
-        match &mut shared.read_channel {
-            ChannelState::Open(data) => {
-                match data.pop_front() {
-                    None => Poll::Pending,
-                    Some(bytes) => {
-                        if bytes.len() > buf.remaining() {
-                            panic!("insufficient write space (available == {}) for queued read (len = {})", buf.remaining(), bytes.len());
-                        }
-                        buf.put_slice(&bytes);
-                        Poll::Ready(Ok(()))
-                    }
+        let (pop, result) = match self.inner.lock().unwrap().actions.front() {
+            Some(Action::Read(bytes)) => {
+                if bytes.len() > buf.remaining() {
+                    panic!(
+                        "insufficient write space (available == {}) for queued read (len = {})",
+                        buf.remaining(),
+                        bytes.len()
+                    );
                 }
+                buf.put_slice(bytes);
+                (true, Poll::Ready(Ok(())))
             }
-            ChannelState::Closed => Poll::Ready(Ok(())),
-            ChannelState::Error(err) => Poll::Ready(Err(Error::new(*err, "test error"))),
+            Some(Action::ReadError(kind)) => {
+                (true, Poll::Ready(Err(Error::new(*kind, "test error"))))
+            }
+            _ => (false, Poll::Pending),
+        };
+
+        if pop {
+            self.inner.lock().unwrap().actions.pop_front().unwrap();
         }
+
+        result
     }
 }
 
-impl AsyncWrite for MockIO {
+impl AsyncWrite for MockIo {
     fn poll_write(
         self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, Error>> {
-        let mut shared = self.0.lock().unwrap();
-
-        match &mut shared.write_channel {
-            ChannelState::Open(data) => match data.pop_front() {
-                None => {
-                    shared.write_pending = true;
-                    Poll::Pending
-                }
-                Some(expected) => {
-                    if buf != expected.as_ref() {
-                        panic!(
-                            r#"unexpected write:
+        let (pop, result) = match self.inner.lock().unwrap().actions.front() {
+            Some(Action::Write(bytes)) => {
+                if buf != bytes.as_slice() {
+                    panic!(
+                        r#"unexpected write:
  expected: {:02X?},
  received: {:02X?}"#,
-                            expected, buf
-                        );
-                    }
-                    shared.write_pending = false;
-                    Poll::Ready(Ok(expected.len()))
+                        bytes, buf
+                    );
                 }
-            },
-            ChannelState::Closed => Poll::Ready(Ok(0)),
-            ChannelState::Error(err) => Poll::Ready(Err(Error::new(*err, "test error"))),
+                (true, Poll::Ready(Ok(bytes.len())))
+            }
+            Some(Action::WriteError(kind)) => {
+                (true, Poll::Ready(Err(Error::new(*kind, "test error"))))
+            }
+            _ => (false, Poll::Pending),
+        };
+
+        if pop {
+            self.inner.lock().unwrap().actions.pop_front().unwrap();
         }
+        result
     }
 
     fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
@@ -187,10 +158,15 @@ impl AsyncWrite for MockIO {
     }
 }
 
-pub fn mock() -> (MockIO, Handle) {
-    let shared = Arc::new(Mutex::new(Shared::new()));
+pub fn mock() -> (MockIo, ScriptHandle) {
+    let inner = Arc::new(Mutex::new(Script::new()));
 
-    (MockIO(shared.clone()), Handle(shared))
+    (
+        MockIo {
+            inner: inner.clone(),
+        },
+        ScriptHandle { inner },
+    )
 }
 
 #[cfg(test)]
@@ -217,19 +193,5 @@ mod tests {
             io.read(&mut buf).await.unwrap()
         })
         .poll());
-    }
-
-    #[test]
-    fn dropping_handle_closes_both_channels() {
-        let (mut io, handle) = mock();
-
-        let mut read_task = spawn(async {
-            let mut buf = [0, 20];
-            io.read(&mut buf).await.unwrap()
-        });
-
-        assert_pending!(read_task.poll());
-        drop(handle);
-        assert_ready_eq!(read_task.poll(), 0);
     }
 }
