@@ -27,11 +27,19 @@ impl Script {
     }
 }
 
-pub struct Handle {
+pub struct ScriptHandle {
     inner: Arc<Mutex<Script>>,
 }
 
-impl Handle {
+impl ScriptHandle {
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.lock().unwrap().actions.len()
+    }
+
     pub fn read(&mut self, data: &[u8]) {
         self.inner
             .lock()
@@ -150,14 +158,14 @@ impl AsyncWrite for MockIo {
     }
 }
 
-pub fn mock() -> (MockIo, Handle) {
+pub fn mock() -> (MockIo, ScriptHandle) {
     let inner = Arc::new(Mutex::new(Script::new()));
 
     (
         MockIo {
             inner: inner.clone(),
         },
-        Handle { inner },
+        ScriptHandle { inner },
     )
 }
 
