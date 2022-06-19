@@ -1,8 +1,8 @@
 use super::super::io::{AsyncRead, AsyncWrite, Error, ErrorKind};
-use std::cell::RefCell;
+
 use std::collections::VecDeque;
 use std::pin::Pin;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use tokio::io::ReadBuf;
 
@@ -28,34 +28,38 @@ impl Inner {
 }
 
 pub struct Handle {
-    inner: Rc<RefCell<Inner>>,
+    inner: Arc<Mutex<Inner>>,
 }
 
 impl Handle {
     pub fn read(&mut self, data: &[u8]) {
         self.inner
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .actions
             .push_back(Action::Read(Vec::from(data)));
     }
 
     pub fn read_error(&mut self, err: ErrorKind) {
         self.inner
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .actions
             .push_back(Action::ReadError(err));
     }
 
     pub fn write(&mut self, data: &[u8]) {
         self.inner
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .actions
             .push_back(Action::Write(Vec::from(data)));
     }
 
     pub fn write_error(&mut self, err: ErrorKind) {
         self.inner
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .actions
             .push_back(Action::WriteError(err));
     }
@@ -63,12 +67,15 @@ impl Handle {
 
 #[derive(Debug)]
 pub struct MockIo {
-    inner: Rc<RefCell<Inner>>,
+    inner: Arc<Mutex<Inner>>,
 }
 
 impl Drop for MockIo {
     fn drop(&mut self) {
-        if !self.inner.borrow().actions.is_empty() && !std::thread::panicking() {}
+        let count = self.inner.lock().unwrap().actions.len();
+        if count > 0 && !std::thread::panicking() {
+            panic!("I/O script contained {} actions on drop", count)
+        }
     }
 }
 
@@ -78,7 +85,7 @@ impl AsyncRead for MockIo {
         _cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        let (pop, result) = match self.inner.borrow_mut().actions.front() {
+        let (pop, result) = match self.inner.lock().unwrap().actions.front() {
             Some(Action::Read(bytes)) => {
                 if bytes.len() > buf.remaining() {
                     panic!(
@@ -97,7 +104,7 @@ impl AsyncRead for MockIo {
         };
 
         if pop {
-            self.inner.borrow_mut().actions.pop_front().unwrap();
+            self.inner.lock().unwrap().actions.pop_front().unwrap();
         }
 
         result
@@ -110,7 +117,7 @@ impl AsyncWrite for MockIo {
         _cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, Error>> {
-        let (pop, result) = match self.inner.borrow().actions.front() {
+        let (pop, result) = match self.inner.lock().unwrap().actions.front() {
             Some(Action::Write(bytes)) => {
                 if buf != bytes.as_slice() {
                     panic!(
@@ -129,7 +136,7 @@ impl AsyncWrite for MockIo {
         };
 
         if pop {
-            self.inner.borrow_mut().actions.pop_front().unwrap();
+            self.inner.lock().unwrap().actions.pop_front().unwrap();
         }
         result
     }
@@ -144,7 +151,7 @@ impl AsyncWrite for MockIo {
 }
 
 pub fn mock() -> (MockIo, Handle) {
-    let inner = Rc::new(RefCell::new(Inner::new()));
+    let inner = Arc::new(Mutex::new(Inner::new()));
 
     (
         MockIo {
